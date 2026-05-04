@@ -174,7 +174,7 @@ async function askClaude(phone, userMessage) {
 
   const response = await axios.post(
     'https://api.anthropic.com/v1/messages',
-    { model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: systemPrompt, messages: history },
+    { model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 1000, system: systemPrompt, messages: history },
     { headers: { 'x-api-key': ENV.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' } }
   );
 
