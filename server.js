@@ -98,25 +98,66 @@ async function processarAgendamento(phone, message, name, conversationId) {
   }
 
   if (estado) {
-    const horaMatch = message.match(/(\d{1,2})[h:](\d{0,2})/);
+    const horaMatch = message.match(/(\d{1,2})[h:]?(\d{2})?/);
     const diaMatch  = message.match(/segunda|terça|terca|quarta|quinta|sexta/i);
-    if (horaMatch && diaMatch) {
+    const diaNumMatch = message.match(/dia\s+(\d{1,2})/i);
+
+    if (horaMatch && (diaMatch || diaNumMatch)) {
       try {
         const hora = parseInt(horaMatch[1]);
         const min  = parseInt(horaMatch[2] || '0');
-        const diaNome = diaMatch[0].toLowerCase().replace('terça','terca');
-        const diasIdx = { segunda:1, terca:2, quarta:3, quinta:4, sexta:5 };
-        const targetDay = diasIdx[diaNome];
-        const data = new Date();
-        while (data.getDay() !== targetDay) data.setDate(data.getDate() + 1);
+
+        // Mapa de dias e consultórios
+        const DIAS_CONSULTORIO = {
+          segunda: { idx:1, consultorio:'Barra da Tijuca',  endereco:'Av. das Américas, 2.480, bloco 2, sala S120' },
+          terca:   { idx:2, consultorio:'Copacabana',       endereco:'Rua Siqueira Campos, 59, sala 308' },
+          quinta:  { idx:4, consultorio:'Barra da Tijuca',  endereco:'Av. das Américas, 2.480, bloco 2, sala S120' },
+          sexta:   { idx:5, consultorio:'Copacabana',       endereco:'Rua Siqueira Campos, 59, sala 308' },
+        };
+
+        let targetDay, consultorio, endereco, data = new Date();
+
+        if (diaNumMatch) {
+          // Paciente disse "dia 11 de maio"
+          const diaNum = parseInt(diaNumMatch[1]);
+          data.setDate(diaNum);
+          // Se passou do mês, vai pro próximo mês
+          if (data < new Date()) data.setMonth(data.getMonth() + 1);
+          const diaNome = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'][data.getDay()];
+          const info = DIAS_CONSULTORIO[diaNome];
+          if (!info) {
+            agendamentoEmAndamento.delete(phone);
+            return `😊 O Dr. Raphael não atende nesse dia. Ele atende:\n• *Segundas e quintas* — Barra da Tijuca\n• *Terças e sextas* — Copacabana\n\nQual desses dias prefere?`;
+          }
+          consultorio = info.consultorio;
+          endereco    = info.endereco;
+        } else if (diaMatch) {
+          const diaNome = diaMatch[0].toLowerCase().replace('terça','terca');
+          const info = DIAS_CONSULTORIO[diaNome];
+          if (!info) {
+            agendamentoEmAndamento.delete(phone);
+            return `😊 O Dr. Raphael não atende nesse dia. Ele atende:\n• *Segundas e quintas* — Barra da Tijuca\n• *Terças e sextas* — Copacabana\n\nQual desses dias prefere?`;
+          }
+          targetDay   = info.idx;
+          consultorio = info.consultorio;
+          endereco    = info.endereco;
+          while (data.getDay() !== targetDay) data.setDate(data.getDate() + 1);
+        }
+
         data.setHours(hora, min, 0, 0);
-        const consultorio = [1,3,5].includes(targetDay) ? 'Copacabana' : 'Barra da Tijuca';
-        const endereco = consultorio === 'Copacabana' ? 'Rua Siqueira Campos, 59, sala 308' : 'Av. das Américas, 2.480, bloco 2, sala S120';
+
+        // Verifica se o horário está dentro do turno
+        const horaNum = hora + min/60;
+        const turnoOk = (horaNum >= 10 && horaNum < 12) || (horaNum >= 14 && horaNum < 17.5);
+        if (!turnoOk) {
+          return `⏰ O Dr. Raphael atende das *10h às 12h* e das *14h às 17h30*.\nQual horário dentro desse período prefere? 😊`;
+        }
+
         await calendarModule.agendarConsulta({ nome: estado.nome, phone, procedimento: estado.procedimento, dataHoraISO: data.toISOString(), consultorio, endereco });
         agendamentoEmAndamento.delete(phone);
         const dataStr = data.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
         const horaStr = data.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-        return `✅ *Consulta agendada!*\n\n📅 ${dataStr}\n🕐 ${horaStr}\n📍 ${consultorio}\n👨‍⚕️ Dr. Raphael Peryassú\n\nVocê receberá um lembrete 24h antes. Até lá! 😊`;
+        return `✅ *Consulta agendada!*\n\n📅 ${dataStr}\n🕐 ${horaStr}\n📍 ${consultorio}\n📍 ${endereco}\n👨‍⚕️ Dr. Raphael Peryassú\n\nVocê receberá um lembrete 24h antes. Até lá! 😊`;
       } catch (e) {
         console.error('[CALENDAR AGENDAR]', e.message);
       }
@@ -373,3 +414,4 @@ app.listen(ENV.PORT, () => {
   console.log(`📞 Secretária: ${ENV.SECRETARIA_PHONE}`);
   console.log(`⏰ Análise noturna: 6h (Brasília)`);
 });
+// already complete
