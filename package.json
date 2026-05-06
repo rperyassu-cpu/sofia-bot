@@ -1,7 +1,7 @@
 {
   "name": "sofia-whatsapp-bot",
   "version": "3.0.0",
-  "description": "Secretária IA do Dr. Raphael Peryassú — com memória, handoff e agenda",
+  "description": "Secretária IA do Dr. Raphael Peryassú",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,9 +9,9 @@
   },
   "dependencies": {
     "axios": "^1.7.0",
-    "better-sqlite3": "^9.4.0",
     "express": "^4.19.0",
     "googleapis": "^140.0.0",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "sql.js": "^1.10.3"
   }
 }
