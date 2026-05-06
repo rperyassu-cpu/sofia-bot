@@ -73,7 +73,7 @@ function upsertPaciente(phone, dados) {
 // ─── HISTÓRICO ────────────────────────────────────────────────────
 function getHistorico(phone, limit = 20) {
   const hist = data.historico[phone] || [];
-  return hist.slice(-limit);
+  return hist.slice(-limit).map(m => ({ role: m.role, content: m.content }));
 }
 
 function saveHistorico(phone, role, content) {
