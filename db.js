@@ -125,4 +125,20 @@ function getConversasRecentes() {
   return result;
 }
 
-module.exports = { getPaciente, upsertPaciente, getHistorico, saveHistorico, getStats, getConversasRecentes };
+// ─── ESTADO DE AGENDAMENTO ───────────────────────────────────────
+function getAgendamentoEstado(phone) {
+  return data.agendamentos?.[phone] || null;
+}
+
+function setAgendamentoEstado(phone, estado) {
+  if (!data.agendamentos) data.agendamentos = {};
+  data.agendamentos[phone] = { ...estado, ts: Date.now() };
+  save();
+}
+
+function clearAgendamentoEstado(phone) {
+  if (data.agendamentos) delete data.agendamentos[phone];
+  save();
+}
+
+module.exports = { getPaciente, upsertPaciente, getHistorico, saveHistorico, getStats, getConversasRecentes, getAgendamentoEstado, setAgendamentoEstado, clearAgendamentoEstado };
