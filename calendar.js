@@ -125,9 +125,10 @@ async function slotsDisponivelNoDia(data, duracao) {
   const diaInfo  = infoDia(data);
   if (!diaInfo) return [];
 
-  // Busca todos os eventos do dia
-  const inicioDia = new Date(data); inicioDia.setHours(0,0,0,0);
-  const fimDia    = new Date(data); fimDia.setHours(23,59,59,999);
+  // Busca todos os eventos do dia no fuso de Brasília (UTC-3)
+  const dataStr = data.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const inicioDia = new Date(dataStr + 'T00:00:00-03:00');
+  const fimDia    = new Date(dataStr + 'T23:59:59-03:00');
 
   const resp = await calendar.events.list({
     calendarId: CALENDAR_ID,
@@ -135,17 +136,19 @@ async function slotsDisponivelNoDia(data, duracao) {
     timeMax: fimDia.toISOString(),
     singleEvents: true,
     orderBy: 'startTime',
+    timeZone: 'America/Sao_Paulo',
   });
   const eventos = resp.data.items || [];
 
   const slots = [];
   const agora  = agoraEmBrasilia();
 
+  // Usa o fuso de Brasília para os slots
+  const dataStrBR = data.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+
   for (const turno of diaInfo.turnos) {
-    let slot = new Date(data);
-    slot.setHours(turno.inicio.h, turno.inicio.m, 0, 0);
-    const fimTurno = new Date(data);
-    fimTurno.setHours(turno.fim.h, turno.fim.m, 0, 0);
+    let slot = new Date(dataStrBR + `T${String(turno.inicio.h).padStart(2,'0')}:${String(turno.inicio.m).padStart(2,'0')}:00-03:00`);
+    const fimTurno = new Date(dataStrBR + `T${String(turno.fim.h).padStart(2,'0')}:${String(turno.fim.m).padStart(2,'0')}:00-03:00`);
 
     while (slot < fimTurno) {
       const slotFim = new Date(slot.getTime() + duracao * 60000);
@@ -160,7 +163,7 @@ async function slotsDisponivelNoDia(data, duracao) {
 
       if (!ocupado) {
         slots.push({
-          hora: slot.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }),
+          hora: slot.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', timeZone:'America/Sao_Paulo' }),
           dataHoraISO: slot.toISOString(),
         });
       }
