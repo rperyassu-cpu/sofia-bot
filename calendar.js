@@ -139,7 +139,7 @@ async function slotsDisponivelNoDia(data, duracao) {
   const eventos = resp.data.items || [];
 
   const slots = [];
-  const agora  = new Date();
+  const agora  = agoraEmBrasilia();
 
   for (const turno of diaInfo.turnos) {
     let slot = new Date(data);
@@ -172,11 +172,20 @@ async function slotsDisponivelNoDia(data, duracao) {
   return slots;
 }
 
+// ─── HELPER: data atual no fuso de Brasília ───────────────────────
+function hojeEmBrasilia() {
+  const str = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  return new Date(str + "T00:00:00-03:00");
+}
+function agoraEmBrasilia() {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+}
+
 // ─── BUSCAR PRÓXIMOS HORÁRIOS DISPONÍVEIS ────────────────────────
 async function buscarHorariosDisponiveis(procedimento, consultorioPref) {
   const duracao = getDuracao(procedimento);
-  const hoje    = new Date();
-  hoje.setHours(0,0,0,0);
+  const hoje    = hojeEmBrasilia();
+
 
   const resultados = [];
   let d = new Date(hoje);
@@ -191,7 +200,7 @@ async function buscarHorariosDisponiveis(procedimento, consultorioPref) {
       if (!consultorioPref || diaInfo.consultorio.toLowerCase().includes(consultorioPref.toLowerCase())) {
         const slots = await slotsDisponivelNoDia(d, duracao);
         if (slots.length > 0) {
-          const dataStr = d.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
+          const dataStr = d.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', timeZone:'America/Sao_Paulo' });
           resultados.push({
             data: dataStr,
             dataObj: new Date(d),
@@ -264,3 +273,4 @@ module.exports = {
   DIAS_IDX,
   DIAS_NOMES,
 };
+// already complete  
