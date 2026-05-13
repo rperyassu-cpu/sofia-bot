@@ -48,19 +48,27 @@ const DIAS_NOMES = ['domingo','segunda','terca','quarta','quinta','sexta','sabad
 const DIAS_IDX   = { segunda:1, terca:2, quarta:3, quinta:4, sexta:5 };
 
 // ─── DURAÇÃO POR PROCEDIMENTO (minutos) ──────────────────────────
+// Reflete os padrões reais do Doctoralia:
+// Consulta (1ª vez ou retorno) = 30 min
+// Revisão = 10 ou 20 min
+// Procedimento = 30 a 60 min
 const DURACOES = {
   'consulta':           30,
   'consulta clinica':   30,
-  'consulta estetica':  45,
+  'consulta estetica':  30,
+  'primeira consulta':  30,
   'retorno':            20,
+  'revisao':            20,
+  'revisão':            20,
   'botox':              30,
-  'preenchimento':      45,
-  'bioestimulador':     45,
-  'radiesse':           45,
+  'preenchimento':      30,
+  'bioestimulador':     30,
+  'radiesse':           30,
   'laser':              60,
-  'peeling':            45,
+  'peeling':            30,
   'limpeza de pele':    60,
-  'cirurgia':           90,
+  'cirurgia':           60,
+  'procedimento':       30,
   'padrao':             30,
 };
 
@@ -155,9 +163,12 @@ async function slotsDisponivelNoDia(data, duracao) {
       if (slotFim > fimTurno) break;
       if (slot <= agora) { slot = new Date(slot.getTime() + 30 * 60000); continue; }
 
+      // Slot está ocupado se o início do slot cair dentro de algum evento
+      // OU se algum evento começar durante este slot
       const ocupado = eventos.some(ev => {
         const evIni = new Date(ev.start.dateTime || ev.start.date);
         const evFim = new Date(ev.end.dateTime   || ev.end.date);
+        // Slot conflita com evento se há qualquer sobreposição
         return slot < evFim && slotFim > evIni;
       });
 
@@ -168,7 +179,7 @@ async function slotsDisponivelNoDia(data, duracao) {
         });
       }
 
-      slot = new Date(slot.getTime() + 30 * 60000);
+      slot = new Date(slot.getTime() + 20 * 60000); // intervalo mínimo do Doctoralia
     }
   }
 
