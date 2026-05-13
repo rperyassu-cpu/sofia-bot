@@ -179,7 +179,7 @@ async function slotsDisponivelNoDia(data, duracao) {
         });
       }
 
-      slot = new Date(slot.getTime() + 20 * 60000); // intervalo mínimo do Doctoralia
+      slot = new Date(slot.getTime() + 20 * 60000);
     }
   }
 
