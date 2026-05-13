@@ -73,6 +73,14 @@ try {
   console.log('⚠️  Google Calendar não configurado:', e.message);
 }
 
+// Detecta pedido de cancelamento
+function detectaCancelamento(message) {
+  const lower = message.toLowerCase();
+  return ['desmarcar','cancelar','cancelamento','remarcar','desmarco','cancelo',
+    'não vou poder','nao vou poder','não consigo ir','nao consigo ir',
+    'quero cancelar','quero desmarcar'].some(p => lower.includes(p));
+}
+
 function detectaAgendamento(message) {
   return ['agendar','marcar','consulta','horário','horario','disponível','disponivel',
     'quando','vaga','encaixar','reservar'].some(p => message.toLowerCase().includes(p));
@@ -463,6 +471,69 @@ app.post('/webhook', async (req, res) => {
       await notificarSecretaria(phone, name, message);
       iniciarHandoff(phone, conversationId, name);
       return;
+    }
+
+    // Detecta pedido de cancelamento
+    if (detectaCancelamento(message) && calendarModule) {
+      try {
+        const consulta = await calendarModule.buscarConsultaPaciente(phone);
+        if (consulta) {
+          const inicio = new Date(consulta.start.dateTime);
+          const dataStr = inicio.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', timeZone:'America/Sao_Paulo' });
+          const horaStr = inicio.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', timeZone:'America/Sao_Paulo' });
+
+          // Verifica se é cancelamento com menos de 48h de antecedência
+          const horasRestantes = (inicio - new Date()) / (1000 * 60 * 60);
+          let msgCancelamento;
+
+          if (horasRestantes < 48) {
+            msgCancelamento = `${name ? name.split(' ')[0] : 'Olá'}, aconteceu algo grave? Normalmente não temos remarcações em cima da hora. 😔
+
+Sua consulta está marcada para *${dataStr} às ${horaStr}*. A agenda do Dr. Raphael é bem apertada — só conseguiria agendar um horário daqui alguns dias.
+
+Tem certeza que precisa cancelar?`;
+          } else {
+            msgCancelamento = `${name ? name.split(' ')[0] : 'Olá'}, entendido. Sua consulta de *${dataStr} às ${horaStr}* será cancelada.
+
+Se tiver algum imprevisto, recomendamos avisar com pelo menos 48h de antecedência para que possamos oferecer o horário a outro paciente.
+
+Deseja confirmar o cancelamento? (responda *sim* para confirmar)`;
+          }
+
+          // Salva estado de cancelamento pendente
+          db.setAgendamentoEstado(phone, { cancelamento: true, eventId: consulta.id, dataStr, horaStr, horasRestantes });
+
+          await sendWhatsApp(phone, msgCancelamento);
+          await registerMessage(conversationId, msgCancelamento, 'outgoing');
+          db.saveHistorico(phone, 'assistant', msgCancelamento);
+          return;
+        } else {
+          const msg = `Não encontrei nenhuma consulta agendada para você. Gostaria de agendar uma nova? 😊`;
+          await sendWhatsApp(phone, msg);
+          await registerMessage(conversationId, msg, 'outgoing');
+          return;
+        }
+      } catch (e) {
+        console.error('[CANCELAMENTO]', e.message);
+      }
+    }
+
+    // Confirma cancelamento pendente
+    const estadoAtual = agendamentoEmAndamento.get(phone);
+    if (estadoAtual?.cancelamento && message.toLowerCase().includes('sim')) {
+      try {
+        await calendarModule.cancelarConsulta(estadoAtual.eventId);
+        agendamentoEmAndamento.delete(phone);
+        const msg = `✅ Consulta de *${estadoAtual.dataStr} às ${estadoAtual.horaStr}* cancelada.
+
+Quando quiser reagendar, é só me avisar! 😊`;
+        await sendWhatsApp(phone, msg);
+        await registerMessage(conversationId, msg, 'outgoing');
+        db.saveHistorico(phone, 'assistant', msg);
+        return;
+      } catch (e) {
+        console.error('[CANCELAMENTO CONFIRMA]', e.message);
+      }
     }
 
     // Tenta processar agendamento pelo Calendar

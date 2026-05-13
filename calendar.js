@@ -275,9 +275,49 @@ function formatarDisponibilidade({ duracao, resultados }) {
   return texto;
 }
 
+
+// already complete  
+
+// ─── BUSCAR CONSULTA AGENDADA DO PACIENTE ────────────────────────
+async function buscarConsultaPaciente(phone) {
+  const calendar = getCalendar();
+  const agora = new Date();
+  const daqui30dias = new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  const resp = await calendar.events.list({
+    calendarId: CALENDAR_ID,
+    timeMin: agora.toISOString(),
+    timeMax: daqui30dias.toISOString(),
+    singleEvents: true,
+    orderBy: 'startTime',
+    q: phone.slice(-8), // busca pelo final do número
+  });
+
+  const eventos = resp.data.items || [];
+  // Filtra eventos que contenham o telefone ou foram criados pela Sofia
+  const consultaPaciente = eventos.filter(e =>
+    e.description?.includes(phone) ||
+    e.description?.includes(phone.slice(-8)) ||
+    e.description?.includes('Sofia')
+  );
+
+  return consultaPaciente[0] || null;
+}
+
+// ─── CANCELAR CONSULTA ────────────────────────────────────────────
+async function cancelarConsulta(eventId) {
+  const calendar = getCalendar();
+  await calendar.events.delete({
+    calendarId: CALENDAR_ID,
+    eventId,
+  });
+}
+
 module.exports = {
   buscarHorariosDisponiveis,
   agendarConsulta,
+  cancelarConsulta,
+  buscarConsultaPaciente,
   formatarDisponibilidade,
   resumoAgenda,
   ondeAtende,
@@ -287,4 +327,3 @@ module.exports = {
   DIAS_IDX,
   DIAS_NOMES,
 };
-// already complete  
