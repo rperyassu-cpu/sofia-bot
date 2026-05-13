@@ -204,8 +204,21 @@ USE estas informações para personalizar o atendimento.`;
     ? 'Secretária humana disponível (Seg-Sex 9h-18h). Se pedir atendente, informe que vai transferir.'
     : 'Fora do horário comercial. Informe que a equipe retorna no próximo dia útil.';
 
+  // Data atual em Brasília
+  const _agora = new Date();
+  const dataHojeBR = _agora.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', year:'numeric', timeZone:'America/Sao_Paulo' });
+  const horaHojeBR = _agora.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', timeZone:'America/Sao_Paulo' });
+  const _amanha = new Date(_agora.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' }) + 'T00:00:00-03:00');
+  _amanha.setDate(_amanha.getDate() + 1);
+  const dataAmanhaBR = _amanha.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', timeZone:'America/Sao_Paulo' });
+
   return `Você é ${s.nome}, a secretária virtual ${s.tom} do consultório do ${c.nome_doutor}, ${c.especialidade}.
 ${memoriaBloco}
+
+━━━ DATA E HORA ATUAL (Brasília) ━━━
+Hoje: ${dataHojeBR}, ${horaHojeBR}
+Amanhã: ${dataAmanhaBR}
+IMPORTANTE: Use sempre essas datas. NUNCA peça ao paciente para informar a data — você já sabe qual é.
 
 ━━━ HORÁRIO ATUAL ━━━
 ${horarioInfo}
