@@ -103,69 +103,89 @@ async function processarAgendamento(phone, message, name, conversationId) {
   }
 
   if (estado) {
-    const horaMatch = message.match(/(\d{1,2})[h:]?(\d{2})?/);
-    const diaMatch  = message.match(/segunda|terça|terca|quarta|quinta|sexta/i);
+    // Extrai hora da mensagem
+    const horaMatch = message.match(/(\d{1,2})[h:](\d{2})?|(\d{1,2})\s*(h|hora|horas|da manhã|da tarde)/i);
+    if (!horaMatch) return null;
+
+    const horaStr = message.match(/(\d{1,2})[h:]?(\d{2})?/);
+    const hora = parseInt(horaStr[1]);
+    const min  = parseInt(horaStr[2] || '0');
+    const horaFormatada = `${String(hora).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+
+    // Detecta o dia mencionado
+    const diaMatch    = message.match(/segunda|terça|terca|quarta|quinta|sexta/i);
     const diaNumMatch = message.match(/dia\s+(\d{1,2})/i);
+    const amanhaMatch = message.match(/amanhã|amanha/i);
+    const hojeMatch   = message.match(/\bhoje\b/i);
 
-    if (horaMatch && (diaMatch || diaNumMatch)) {
-      try {
-        const hora = parseInt(horaMatch[1]);
-        const min  = parseInt(horaMatch[2] || '0');
+    // Busca o slot correspondente nos resultados salvos
+    const todos_slots = estado.disponibilidade?.resultados || [];
+    let slotEncontrado = null;
 
-        // Mapa de dias e consultórios
-        const DIAS_CONSULTORIO = {
-          segunda: { idx:1, consultorio:'Barra da Tijuca',  endereco:'Av. das Américas, 2.480, bloco 2, sala S120' },
-          terca:   { idx:2, consultorio:'Copacabana',       endereco:'Rua Siqueira Campos, 59, sala 308' },
-          quinta:  { idx:4, consultorio:'Barra da Tijuca',  endereco:'Av. das Américas, 2.480, bloco 2, sala S120' },
-          sexta:   { idx:5, consultorio:'Copacabana',       endereco:'Rua Siqueira Campos, 59, sala 308' },
-        };
+    for (const resultado of todos_slots) {
+      for (const slot of resultado.slots) {
+        if (slot.hora === horaFormatada) {
+          // Verifica se o dia bate
+          const slotData = new Date(slot.dataHoraISO);
+          const slotDiaBR = slotData.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', timeZone:'America/Sao_Paulo' });
 
-        let targetDay, consultorio, endereco, data = new Date();
-
-        if (diaNumMatch) {
-          // Paciente disse "dia 11 de maio"
-          const diaNum = parseInt(diaNumMatch[1]);
-          data.setDate(diaNum);
-          // Se passou do mês, vai pro próximo mês
-          if (data < new Date()) data.setMonth(data.getMonth() + 1);
-          const diaNome = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'][data.getDay()];
-          const info = DIAS_CONSULTORIO[diaNome];
-          if (!info) {
-            agendamentoEmAndamento.delete(phone);
-            return `😊 O Dr. Raphael não atende nesse dia. Ele atende:\n• *Segundas e quintas* — Barra da Tijuca\n• *Terças e sextas* — Copacabana\n\nQual desses dias prefere?`;
+          let diaOk = false;
+          if (amanhaMatch) {
+            // "amanhã" — verifica se é o próximo dia
+            const amanha = new Date(new Date().toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' }) + 'T00:00:00-03:00');
+            amanha.setDate(amanha.getDate() + 1);
+            const slotDiaNum = slotData.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
+            const amanhaDiaNum = amanha.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
+            diaOk = slotDiaNum === amanhaDiaNum;
+          } else if (hojeMatch) {
+            const hoje = new Date().toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
+            diaOk = slotData.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' }) === hoje;
+          } else if (diaNumMatch) {
+            const diaNum = parseInt(diaNumMatch[1]);
+            diaOk = slotData.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' }).endsWith('-' + String(diaNum).padStart(2,'0'));
+          } else if (diaMatch) {
+            const dias = { segunda:'segunda',terca:'terça',terça:'terça',quinta:'quinta',sexta:'sexta' };
+            const diaBuscado = dias[diaMatch[0].toLowerCase()] || diaMatch[0].toLowerCase();
+            diaOk = slotDiaBR.toLowerCase().includes(diaBuscado);
+          } else {
+            // Sem dia especificado — usa o primeiro disponível com esse horário
+            diaOk = true;
           }
-          consultorio = info.consultorio;
-          endereco    = info.endereco;
-        } else if (diaMatch) {
-          const diaNome = diaMatch[0].toLowerCase().replace('terça','terca');
-          const info = DIAS_CONSULTORIO[diaNome];
-          if (!info) {
-            agendamentoEmAndamento.delete(phone);
-            return `😊 O Dr. Raphael não atende nesse dia. Ele atende:\n• *Segundas e quintas* — Barra da Tijuca\n• *Terças e sextas* — Copacabana\n\nQual desses dias prefere?`;
-          }
-          targetDay   = info.idx;
-          consultorio = info.consultorio;
-          endereco    = info.endereco;
-          while (data.getDay() !== targetDay) data.setDate(data.getDate() + 1);
+
+          if (diaOk) { slotEncontrado = { slot, resultado }; break; }
         }
-
-        data.setHours(hora, min, 0, 0);
-
-        // Verifica se o horário está dentro do turno
-        const horaNum = hora + min/60;
-        const turnoOk = (horaNum >= 10 && horaNum < 12) || (horaNum >= 14 && horaNum < 17.5);
-        if (!turnoOk) {
-          return `⏰ O Dr. Raphael atende das *10h às 12h* e das *14h às 17h30*.\nQual horário dentro desse período prefere? 😊`;
-        }
-
-        await calendarModule.agendarConsulta({ nome: estado.nome, phone, procedimento: estado.procedimento, dataHoraISO: data.toISOString(), consultorio, endereco });
-        agendamentoEmAndamento.delete(phone);
-        const dataStr = data.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
-        const horaStr = data.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-        return `✅ *Consulta agendada!*\n\n📅 ${dataStr}\n🕐 ${horaStr}\n📍 ${consultorio}\n📍 ${endereco}\n👨‍⚕️ Dr. Raphael Peryassú\n\nVocê receberá um lembrete 24h antes. Até lá! 😊`;
-      } catch (e) {
-        console.error('[CALENDAR AGENDAR]', e.message);
       }
+      if (slotEncontrado) break;
+    }
+
+    if (!slotEncontrado) {
+      // Horário não encontrado nos slots disponíveis
+      const horariosDisponiveis = todos_slots.slice(0,2).map(r =>
+        `*${r.data}* (${r.consultorio}): ${r.slots.slice(0,3).map(s => s.hora).join(', ')}`
+      ).join('\n');
+      return `😊 Não encontrei disponibilidade às ${horaFormatada}. Os horários disponíveis são:\n\n${horariosDisponiveis}\n\nQual prefere?`;
+    }
+
+    try {
+      const { slot, resultado } = slotEncontrado;
+      await calendarModule.agendarConsulta({
+        nome: estado.nome || name,
+        phone,
+        procedimento: estado.procedimento,
+        dataHoraISO: slot.dataHoraISO,
+        consultorio: resultado.consultorio,
+        endereco: resultado.endereco,
+      });
+      agendamentoEmAndamento.delete(phone);
+
+      const dataFinal = new Date(slot.dataHoraISO);
+      const dataStr = dataFinal.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', timeZone:'America/Sao_Paulo' });
+      const horaFinal = dataFinal.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', timeZone:'America/Sao_Paulo' });
+
+      return `✅ *Consulta agendada com sucesso!*\n\n📅 ${dataStr}\n🕐 ${horaFinal}\n📍 ${resultado.consultorio}\n📍 ${resultado.endereco}\n👨‍⚕️ Dr. Raphael Peryassú\n\nVocê receberá um lembrete 24h antes. Até lá! 😊`;
+    } catch (e) {
+      console.error('[CALENDAR AGENDAR]', e.message);
+      return null;
     }
   }
   return null;
