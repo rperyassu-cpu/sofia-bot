@@ -211,32 +211,35 @@ async function processarAgendamento(phone, message, name, conversationId) {
 
     // Verifica se o dia pedido está nos slots salvos
     const dataAlvoStr = dataAlvo?.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
-    const diaNosSlotsAtual = dataAlvo && todos_slots.some(r => {
-      const rData = new Date(r.dataObj).toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
-      return rData === dataAlvoStr;
-    });
+    // Se não há dia especificado na mensagem mas há diaEspecifico no estado,
+    // verifica se os slots já são do dia correto
+    const diaNosSlotsAtual = dataAlvo
+      ? todos_slots.some(r => {
+          const rData = new Date(r.dataObj).toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
+          return rData === dataAlvoStr;
+        })
+      : estado.diaEspecifico
+        ? todos_slots.some(r => {
+            const diaNome = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'][new Date(r.dataObj).getDay()];
+            return diaNome === estado.diaEspecifico;
+          })
+        : true; // sem restrição de dia, usa slots atuais
 
-    // Se dia não está nos slots salvos, rebusca com dia específico
+    // Se dia não está nos slots salvos, rebusca usando diaEspecifico do estado
     if (!diaNosSlotsAtual) {
       try {
-        let diaEspecificoRebusca = null;
-        let consultorioPref = null;
+        // Prioridade: dia do estado > dia da mensagem atual
+        const diaParaRebusca = estado.diaEspecifico || (dataAlvo
+          ? ['domingo','segunda','terca','quarta','quinta','sexta','sabado'][dataAlvo.getDay()]
+          : null);
 
-        if (dataAlvo) {
-          const diaSemana = dataAlvo.getDay();
-          const DIAS_NOMES_LOCAL = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'];
-          diaEspecificoRebusca = DIAS_NOMES_LOCAL[diaSemana];
-          consultorioPref = [1,4].includes(diaSemana) ? 'Barra' : [2,5].includes(diaSemana) ? 'Copacabana' : null;
-        } else if (estado.diaEspecifico) {
-          // Usa o dia específico salvo no estado
-          diaEspecificoRebusca = estado.diaEspecifico;
-          consultorioPref = ['segunda','quinta'].includes(diaEspecificoRebusca) ? 'Barra' : 'Copacabana';
-        }
-
-        if (diaEspecificoRebusca) {
-          const novaDisp = await calendarModule.buscarHorariosDisponiveis(estado.procedimento, consultorioPref, diaEspecificoRebusca);
+        if (diaParaRebusca) {
+          const consultorioPref = ['segunda','quinta'].includes(diaParaRebusca) ? 'Barra' : 'Copacabana';
+          const novaDisp = await calendarModule.buscarHorariosDisponiveis(estado.procedimento, consultorioPref, diaParaRebusca);
           todos_slots = novaDisp.resultados;
-          agendamentoEmAndamento.set(phone, { ...estado, disponibilidade: novaDisp });
+          // Preserva diaEspecifico original ao atualizar estado
+          agendamentoEmAndamento.set(phone, { ...estado, disponibilidade: novaDisp, diaEspecifico: diaParaRebusca });
+          console.log(`[REBUSCA] ${diaParaRebusca}: ${novaDisp.resultados.map(r => r.data).join(', ')}`);
         }
       } catch (e) {
         console.error('[CALENDAR REBUSCA]', e.message);
