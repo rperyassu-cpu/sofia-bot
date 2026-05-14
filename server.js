@@ -64,6 +64,15 @@ function cancelarHandoff(phone) {
 
 function estaEmHandoff(phone) { return handoffQueue.has(phone); }
 
+// ─── MÓDULO DE CONFIRMAÇÃO ───────────────────────────────────────
+let confirmacaoModule = null;
+try {
+  confirmacaoModule = require('./confirmacao');
+  console.log('🔔 Módulo de confirmação carregado!');
+} catch (e) {
+  console.log('⚠️  Módulo de confirmação não disponível:', e.message);
+}
+
 // ─── GOOGLE CALENDAR ──────────────────────────────────────────────
 let calendarModule = null;
 try {
@@ -71,6 +80,19 @@ try {
   console.log('📅 Google Calendar integrado!');
 } catch (e) {
   console.log('⚠️  Google Calendar não configurado:', e.message);
+}
+
+// Detecta confirmação de consulta
+function detectaConfirmacaoConsulta(message) {
+  const lower = message.toLowerCase();
+  return ['confirmar','confirmo','vou comparecer','estarei lá','estarei la',
+    'confirmado','vou estar','pode confirmar','sim, confirmo',
+    'confirmar consulta','confirmar presença','confirmar presenca'].some(p => lower.includes(p));
+}
+
+// Detecta confirmação simples de "sim"
+function detectaSimples(message) {
+  return /^(sim|s|yes|ok|pode|confirmo|confirmado)[\s!.]*$/i.test(message.trim());
 }
 
 // Detecta pedido de cancelamento
@@ -475,7 +497,20 @@ app.post('/webhook', async (req, res) => {
       return;
     }
 
-    // Detecta pedido de cancelamento
+    // Detecta confirmação de consulta
+function detectaConfirmacaoConsulta(message) {
+  const lower = message.toLowerCase();
+  return ['confirmar','confirmo','vou comparecer','estarei lá','estarei la',
+    'confirmado','vou estar','pode confirmar','sim, confirmo',
+    'confirmar consulta','confirmar presença','confirmar presenca'].some(p => lower.includes(p));
+}
+
+// Detecta confirmação simples de "sim"
+function detectaSimples(message) {
+  return /^(sim|s|yes|ok|pode|confirmo|confirmado)[\s!.]*$/i.test(message.trim());
+}
+
+// Detecta pedido de cancelamento
     if (detectaCancelamento(message) && calendarModule) {
       try {
         const consulta = await calendarModule.buscarConsultaPaciente(phone);
