@@ -284,24 +284,36 @@ async function buscarConsultaPaciente(phone) {
   const agora = new Date();
   const daqui30dias = new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000);
 
+  // Busca todos os eventos futuros criados pela Sofia (sem filtro de texto)
   const resp = await calendar.events.list({
     calendarId: CALENDAR_ID,
     timeMin: agora.toISOString(),
     timeMax: daqui30dias.toISOString(),
     singleEvents: true,
     orderBy: 'startTime',
-    q: phone.slice(-8), // busca pelo final do número
   });
 
   const eventos = resp.data.items || [];
-  // Filtra eventos que contenham o telefone ou foram criados pela Sofia
-  const consultaPaciente = eventos.filter(e =>
-    e.description?.includes(phone) ||
-    e.description?.includes(phone.slice(-8)) ||
-    e.description?.includes('Sofia')
-  );
 
-  return consultaPaciente[0] || null;
+  // Formatos possíveis do telefone para busca
+  const phoneFormats = [
+    phone,                          // 5521997336800
+    phone.slice(-8),                // 97336800
+    phone.replace(/^55/, ''),       // 21997336800
+    '+' + phone,                    // +5521997336800
+    '+55 ' + phone.slice(2),        // +55 21997336800
+    phone.slice(2),                 // 21997336800
+  ];
+
+  const consultaPaciente = eventos.find(e => {
+    const titulo = e.summary || '';
+    const desc   = e.description || '';
+    const texto  = titulo + ' ' + desc;
+    // Busca em título (Doctoralia) e descrição (Sofia)
+    return phoneFormats.some(f => texto.replace(/[\s\-().]/g, '').includes(f.replace(/[\s\-().]/g, '')));
+  });
+
+  return consultaPaciente || null;
 }
 
 // ─── CANCELAR CONSULTA ────────────────────────────────────────────
