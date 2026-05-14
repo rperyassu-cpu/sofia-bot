@@ -152,8 +152,10 @@ async function processarAgendamento(phone, message, name, conversationId) {
     const amanhaMatch = message.match(/amanhã|amanha/i);
     const hojeMatch   = message.match(/\bhoje\b/i);
 
-    // Extrai hora da mensagem
-    const horaStrMatch = message.match(/(\d{1,2})[h:](\d{2})?/);
+    // Extrai hora da mensagem — aceita: 10h, 10:00, 10 horas, às 10, 10h00
+    const horaStrMatch = message.match(/(\d{1,2})[h:](\d{2})?/) ||
+                         message.match(/(\d{1,2})\s*(?:hora|horas|h\b)/i) ||
+                         message.match(/(?:às|as|as\s)\s*(\d{1,2})/i);
     if (!horaStrMatch) {
       // Sem hora — pode ser que o paciente especificou só o dia
       // Atualiza os slots para incluir o dia pedido
@@ -171,8 +173,11 @@ async function processarAgendamento(phone, message, name, conversationId) {
       return null;
     }
 
-    const hora = parseInt(horaStrMatch[1]);
-    const min  = parseInt(horaStrMatch[2] || '0');
+    // Extrai número da hora do primeiro grupo que tiver valor
+    const horaNum = parseInt(horaStrMatch[1] || horaStrMatch[2] || '0');
+    const minNum  = parseInt(horaStrMatch[2] && horaStrMatch[2].length === 2 ? horaStrMatch[2] : '0');
+    const hora = horaNum;
+    const min  = minNum;
     const horaFormatada = `${String(hora).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
 
     // Determina a data alvo baseado no dia mencionado
