@@ -135,67 +135,108 @@ async function processarAgendamento(phone, message, name, conversationId) {
   }
 
   if (estado) {
-    // Extrai hora da mensagem
-    const horaMatch = message.match(/(\d{1,2})[h:](\d{2})?|(\d{1,2})\s*(h|hora|horas|da manhã|da tarde)/i);
-    if (!horaMatch) return null;
-
-    const horaStr = message.match(/(\d{1,2})[h:]?(\d{2})?/);
-    const hora = parseInt(horaStr[1]);
-    const min  = parseInt(horaStr[2] || '0');
-    const horaFormatada = `${String(hora).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
-
     // Detecta o dia mencionado
     const diaMatch    = message.match(/segunda|terça|terca|quarta|quinta|sexta/i);
-    const diaNumMatch = message.match(/dia\s+(\d{1,2})/i);
+    const diaNumMatch = message.match(/(?:dia\s+)?(\d{1,2})(?:\s+de\s+\w+)?/i);
     const amanhaMatch = message.match(/amanhã|amanha/i);
     const hojeMatch   = message.match(/\bhoje\b/i);
 
-    // Busca o slot correspondente nos resultados salvos
-    const todos_slots = estado.disponibilidade?.resultados || [];
+    // Extrai hora da mensagem
+    const horaStrMatch = message.match(/(\d{1,2})[h:](\d{2})?/);
+    if (!horaStrMatch) {
+      // Sem hora — pode ser que o paciente especificou só o dia
+      // Atualiza os slots para incluir o dia pedido
+      if (diaMatch || diaNumMatch) {
+        const diaNome = diaMatch?.[0].toLowerCase().replace('terça','terca');
+        const consultorioPref = diaNome
+          ? (['segunda','quinta'].includes(diaNome) ? 'Barra' : 'Copacabana')
+          : null;
+        try {
+          const novaDisp = await calendarModule.buscarHorariosDisponiveis(estado.procedimento, consultorioPref);
+          agendamentoEmAndamento.set(phone, { ...estado, disponibilidade: novaDisp });
+          return calendarModule.formatarDisponibilidade(novaDisp);
+        } catch (e) { return null; }
+      }
+      return null;
+    }
+
+    const hora = parseInt(horaStrMatch[1]);
+    const min  = parseInt(horaStrMatch[2] || '0');
+    const horaFormatada = `${String(hora).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+
+    // Determina a data alvo baseado no dia mencionado
+    let dataAlvo = null;
+    if (amanhaMatch) {
+      dataAlvo = new Date(new Date().toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' }) + 'T00:00:00-03:00');
+      dataAlvo.setDate(dataAlvo.getDate() + 1);
+    } else if (hojeMatch) {
+      dataAlvo = new Date(new Date().toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' }) + 'T00:00:00-03:00');
+    } else if (diaNumMatch) {
+      const diaNum = parseInt(diaNumMatch[1]);
+      if (diaNum >= 1 && diaNum <= 31) {
+        dataAlvo = new Date(new Date().toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' }) + 'T00:00:00-03:00');
+        dataAlvo.setDate(diaNum);
+        if (dataAlvo < new Date()) dataAlvo.setMonth(dataAlvo.getMonth() + 1);
+      }
+    } else if (diaMatch) {
+      const diasIdx = { segunda:1, terca:2, quarta:3, quinta:4, sexta:5 };
+      const diaNome = diaMatch[0].toLowerCase().replace('terça','terca');
+      const targetDay = diasIdx[diaNome];
+      if (targetDay) {
+        dataAlvo = new Date(new Date().toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' }) + 'T00:00:00-03:00');
+        dataAlvo.setDate(dataAlvo.getDate() + 1); // começa amanhã
+        while (dataAlvo.getDay() !== targetDay) dataAlvo.setDate(dataAlvo.getDate() + 1);
+      }
+    }
+
+    // Busca o slot nos resultados salvos OU rebusca se dia não estiver nos slots
+    let todos_slots = estado.disponibilidade?.resultados || [];
     let slotEncontrado = null;
 
+    // Verifica se o dia pedido está nos slots salvos
+    const dataAlvoStr = dataAlvo?.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
+    const diaNosSlotsAtual = dataAlvo && todos_slots.some(r => {
+      const rData = new Date(r.dataObj).toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
+      return rData === dataAlvoStr;
+    });
+
+    // Se dia não está nos slots salvos, rebusca
+    if (dataAlvo && !diaNosSlotsAtual) {
+      try {
+        const diaSemana = dataAlvo.getDay();
+        const consultorioPref = [1,4].includes(diaSemana) ? 'Barra' : [2,5].includes(diaSemana) ? 'Copacabana' : null;
+        const novaDisp = await calendarModule.buscarHorariosDisponiveis(estado.procedimento, consultorioPref);
+        todos_slots = novaDisp.resultados;
+        agendamentoEmAndamento.set(phone, { ...estado, disponibilidade: novaDisp });
+      } catch (e) {
+        console.error('[CALENDAR REBUSCA]', e.message);
+      }
+    }
+
+    // Busca slot correspondente
     for (const resultado of todos_slots) {
       for (const slot of resultado.slots) {
-        if (slot.hora === horaFormatada) {
-          // Verifica se o dia bate
-          const slotData = new Date(slot.dataHoraISO);
-          const slotDiaBR = slotData.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', timeZone:'America/Sao_Paulo' });
+        if (slot.hora !== horaFormatada) continue;
+        const slotData = new Date(slot.dataHoraISO);
+        const slotDataStr = slotData.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
 
-          let diaOk = false;
-          if (amanhaMatch) {
-            // "amanhã" — verifica se é o próximo dia
-            const amanha = new Date(new Date().toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' }) + 'T00:00:00-03:00');
-            amanha.setDate(amanha.getDate() + 1);
-            const slotDiaNum = slotData.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
-            const amanhaDiaNum = amanha.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
-            diaOk = slotDiaNum === amanhaDiaNum;
-          } else if (hojeMatch) {
-            const hoje = new Date().toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' });
-            diaOk = slotData.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' }) === hoje;
-          } else if (diaNumMatch) {
-            const diaNum = parseInt(diaNumMatch[1]);
-            diaOk = slotData.toLocaleDateString('en-CA', { timeZone:'America/Sao_Paulo' }).endsWith('-' + String(diaNum).padStart(2,'0'));
-          } else if (diaMatch) {
-            const dias = { segunda:'segunda',terca:'terça',terça:'terça',quinta:'quinta',sexta:'sexta' };
-            const diaBuscado = dias[diaMatch[0].toLowerCase()] || diaMatch[0].toLowerCase();
-            diaOk = slotDiaBR.toLowerCase().includes(diaBuscado);
-          } else {
-            // Sem dia especificado — usa o primeiro disponível com esse horário
-            diaOk = true;
-          }
-
-          if (diaOk) { slotEncontrado = { slot, resultado }; break; }
+        let diaOk = false;
+        if (dataAlvo) {
+          diaOk = slotDataStr === dataAlvoStr;
+        } else {
+          diaOk = true; // sem dia especificado, pega o primeiro
         }
+
+        if (diaOk) { slotEncontrado = { slot, resultado }; break; }
       }
       if (slotEncontrado) break;
     }
 
     if (!slotEncontrado) {
-      // Horário não encontrado nos slots disponíveis
       const horariosDisponiveis = todos_slots.slice(0,2).map(r =>
         `*${r.data}* (${r.consultorio}): ${r.slots.slice(0,3).map(s => s.hora).join(', ')}`
       ).join('\n');
-      return `😊 Não encontrei disponibilidade às ${horaFormatada}. Os horários disponíveis são:\n\n${horariosDisponiveis}\n\nQual prefere?`;
+      return `😊 Não encontrei disponibilidade às ${horaFormatada}${dataAlvo ? ' nesse dia' : ''}. Os horários disponíveis são:\n\n${horariosDisponiveis}\n\nQual prefere?`;
     }
 
     try {
