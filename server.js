@@ -136,7 +136,8 @@ async function processarAgendamento(phone, message, name, conversationId) {
 
       const disponibilidade = await calendarModule.buscarHorariosDisponiveis(procedimento, consultorioPref, diaEspecifico);
       const texto = calendarModule.formatarDisponibilidade(disponibilidade);
-      agendamentoEmAndamento.set(phone, { disponibilidade, procedimento, nome: paciente?.nome || name });
+      // Salva diaEspecifico no estado para usar na confirmação
+      agendamentoEmAndamento.set(phone, { disponibilidade, procedimento, nome: paciente?.nome || name, diaEspecifico });
       return texto;
     } catch (e) {
       console.error('[CALENDAR]', e.message);
@@ -210,14 +211,28 @@ async function processarAgendamento(phone, message, name, conversationId) {
       return rData === dataAlvoStr;
     });
 
-    // Se dia não está nos slots salvos, rebusca
-    if (dataAlvo && !diaNosSlotsAtual) {
+    // Se dia não está nos slots salvos, rebusca com dia específico
+    if (!diaNosSlotsAtual) {
       try {
-        const diaSemana = dataAlvo.getDay();
-        const consultorioPref = [1,4].includes(diaSemana) ? 'Barra' : [2,5].includes(diaSemana) ? 'Copacabana' : null;
-        const novaDisp = await calendarModule.buscarHorariosDisponiveis(estado.procedimento, consultorioPref);
-        todos_slots = novaDisp.resultados;
-        agendamentoEmAndamento.set(phone, { ...estado, disponibilidade: novaDisp });
+        let diaEspecificoRebusca = null;
+        let consultorioPref = null;
+
+        if (dataAlvo) {
+          const diaSemana = dataAlvo.getDay();
+          const DIAS_NOMES_LOCAL = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'];
+          diaEspecificoRebusca = DIAS_NOMES_LOCAL[diaSemana];
+          consultorioPref = [1,4].includes(diaSemana) ? 'Barra' : [2,5].includes(diaSemana) ? 'Copacabana' : null;
+        } else if (estado.diaEspecifico) {
+          // Usa o dia específico salvo no estado
+          diaEspecificoRebusca = estado.diaEspecifico;
+          consultorioPref = ['segunda','quinta'].includes(diaEspecificoRebusca) ? 'Barra' : 'Copacabana';
+        }
+
+        if (diaEspecificoRebusca) {
+          const novaDisp = await calendarModule.buscarHorariosDisponiveis(estado.procedimento, consultorioPref, diaEspecificoRebusca);
+          todos_slots = novaDisp.resultados;
+          agendamentoEmAndamento.set(phone, { ...estado, disponibilidade: novaDisp });
+        }
       } catch (e) {
         console.error('[CALENDAR REBUSCA]', e.message);
       }
