@@ -82,8 +82,10 @@ function detectaCancelamento(message) {
 }
 
 function detectaAgendamento(message) {
-  return ['agendar','marcar','consulta','horário','horario','disponível','disponivel',
-    'quando','vaga','encaixar','reservar'].some(p => message.toLowerCase().includes(p));
+  if (detectaCancelamento(message)) return false; // cancelamento tem prioridade
+  return ['agendar','marcar','horário','horario','disponível','disponivel',
+    'quando','vaga','encaixar','reservar','quero consulta','agendar consulta',
+    'marcar consulta'].some(p => message.toLowerCase().includes(p));
 }
 
 const agendamentoEmAndamento = {
