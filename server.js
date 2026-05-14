@@ -124,7 +124,17 @@ async function processarAgendamento(phone, message, name, conversationId) {
     try {
       const paciente = db.getPaciente(phone);
       const procedimento = paciente?.procedimentos_interesse?.split(',')[0]?.trim() || 'consulta';
-      const disponibilidade = await calendarModule.buscarHorariosDisponiveis(procedimento, paciente?.consultorio_preferido);
+
+      // Detecta se o paciente pediu um dia específico
+      const diaMatch = message.match(/segunda|terça|terca|quarta|quinta|sexta/i);
+      const diaEspecifico = diaMatch
+        ? diaMatch[0].toLowerCase().replace('terça','terca')
+        : null;
+      const consultorioPref = diaEspecifico
+        ? (['segunda','quinta'].includes(diaEspecifico) ? 'Barra' : 'Copacabana')
+        : paciente?.consultorio_preferido;
+
+      const disponibilidade = await calendarModule.buscarHorariosDisponiveis(procedimento, consultorioPref, diaEspecifico);
       const texto = calendarModule.formatarDisponibilidade(disponibilidade);
       agendamentoEmAndamento.set(phone, { disponibilidade, procedimento, nome: paciente?.nome || name });
       return texto;

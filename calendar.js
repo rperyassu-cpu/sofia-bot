@@ -196,21 +196,31 @@ function agoraEmBrasilia() {
 }
 
 // ─── BUSCAR PRÓXIMOS HORÁRIOS DISPONÍVEIS ────────────────────────
-async function buscarHorariosDisponiveis(procedimento, consultorioPref) {
+async function buscarHorariosDisponiveis(procedimento, consultorioPref, diaEspecifico) {
   const duracao = getDuracao(procedimento);
   const hoje    = hojeEmBrasilia();
 
-
   const resultados = [];
   let d = new Date(hoje);
+  d.setDate(d.getDate() + 1); // começa amanhã
   let tentativas = 0;
 
-  while (resultados.length < 3 && tentativas < 30) {
+  const maxTentativas = diaEspecifico ? 28 : 30;
+  const maxResultados = diaEspecifico ? 1 : 3;
+
+  while (resultados.length < maxResultados && tentativas < maxTentativas) {
     tentativas++;
     const diaInfo = infoDia(d);
 
     if (diaInfo) {
-      // Filtra por consultório preferido se informado
+      if (diaEspecifico) {
+        const diaNomeBR = DIAS_NOMES[d.getDay()];
+        if (diaNomeBR !== diaEspecifico) {
+          d.setDate(d.getDate() + 1);
+          continue;
+        }
+      }
+
       if (!consultorioPref || diaInfo.consultorio.toLowerCase().includes(consultorioPref.toLowerCase())) {
         const slots = await slotsDisponivelNoDia(d, duracao);
         if (slots.length > 0) {
@@ -231,6 +241,7 @@ async function buscarHorariosDisponiveis(procedimento, consultorioPref) {
 
   return { duracao, resultados };
 }
+
 
 // ─── AGENDAR CONSULTA ─────────────────────────────────────────────
 async function agendarConsulta({ nome, phone, procedimento, dataHoraISO, consultorio, endereco }) {
